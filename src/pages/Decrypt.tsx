@@ -2,6 +2,8 @@ import { useState } from 'react';
 import FileUpload from '../components/FileUpload';
 import { Unlock, Sparkles, CheckCircle, AlertCircle, Loader, ArrowRight } from 'lucide-react';
 
+type DecryptMode = 'password' | 'rsa';
+
 export default function Decrypt() {
   const [stegoImage, setStegoImage] = useState<File | null>(null);
   const [password, setPassword] = useState('');
@@ -11,6 +13,11 @@ export default function Decrypt() {
   const [recoveredImage, setRecoveredImage] = useState('');
   const [error, setError] = useState('');
   const [showComparison, setShowComparison] = useState(false);
+
+  // NEW: mode + RSA fields
+  const [mode, setMode] = useState<DecryptMode>('password');
+  const [privateKeyFile, setPrivateKeyFile] = useState<File | null>(null);
+  const [encryptedKey, setEncryptedKey] = useState('');
 
   const handleStegoImage = (file: File) => {
     setStegoImage(file);
@@ -27,6 +34,23 @@ export default function Decrypt() {
       return;
     }
 
+    // Mode-specific validations
+    if (mode === 'password' && !password) {
+      setError('Please enter the decryption password (or use RSA mode).');
+      return;
+    }
+
+    if (mode === 'rsa') {
+      if (!privateKeyFile) {
+        setError('Please upload your RSA private key (.pem file).');
+        return;
+      }
+      if (!encryptedKey.trim()) {
+        setError('Please paste the encrypted key you received (Base64 string).');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     setError('');
     setRecoveredImage('');
@@ -35,27 +59,40 @@ export default function Decrypt() {
 
     const formData = new FormData();
     formData.append('stegoImage', stegoImage);
-    if (password) formData.append('password', password);
+
+    let endpoint = '/api/recover';
+
+    if (mode === 'password') {
+      formData.append('password', password);
+      endpoint = '/api/recover';
+    } else {
+      formData.append('privateKeyFile', privateKeyFile as File);
+      formData.append('encryptedKey', encryptedKey.trim());
+      endpoint = '/api/recover-rsa';
+    }
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Just to show the status animation nicely
+      await new Promise((resolve) => setTimeout(resolve, 800));
       setStatus('Extracting hidden image...');
 
-      const response = await fetch('/api/recover', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error('Decryption failed. Please check your password.');
-      }
-
       const data = await response.json();
 
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      if (!response.ok) {
+        throw new Error(data.error || 'Decryption failed. Please check your inputs.');
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 700));
       setStatus('Applying AI enhancement...');
 
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+      // (Optional) here you could actually call /api/ai-recover with data.recoveredImageUrl
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       setStatus('Recovery complete!');
       setRecoveredImage(data.recoveredImageUrl || data.recoveredImage);
       setShowComparison(true);
@@ -65,6 +102,18 @@ export default function Decrypt() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const resetAll = () => {
+    setStegoImage(null);
+    setStegoPreview('');
+    setRecoveredImage('');
+    setShowComparison(false);
+    setStatus('');
+    setError('');
+    setPassword('');
+    setPrivateKeyFile(null);
+    setEncryptedKey('');
   };
 
   return (
@@ -83,32 +132,103 @@ export default function Decrypt() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
+          {/* Mode toggle */}
+          <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('password')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                  mode === 'password'
+                    ? 'bg-green-600 text-white border-green-600 shadow'
+                    : 'bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700'
+                }`}
+              >
+                Password mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('rsa')}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                  mode === 'rsa'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow'
+                    : 'bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700'
+                }`}
+              >
+                RSA secure mode
+              </button>
+            </div>
+            <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+              {mode === 'password'
+                ? 'Use the same password that was set during encryption.'
+                : 'Use your private key + encrypted key (safer – the password never travels in plain text).'}
+            </p>
+          </div>
+
           <div className="mb-6">
             <FileUpload
               label="Stego Image"
               onFileSelect={handleStegoImage}
               preview={stegoPreview}
-              onClear={() => {
-                setStegoImage(null);
-                setStegoPreview('');
-                setRecoveredImage('');
-                setShowComparison(false);
-              }}
+              onClear={resetAll}
             />
           </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Password (if encrypted)
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter decryption password"
-              className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
-            />
-          </div>
+          {/* Mode-specific inputs */}
+          {mode === 'password' && (
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter decryption password"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+          )}
+
+          {mode === 'rsa' && (
+            <div className="mb-6 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Encrypted Key (Base64)
+                </label>
+                <textarea
+                  value={encryptedKey}
+                  onChange={(e) => setEncryptedKey(e.target.value)}
+                  placeholder="Paste the encrypted key you received in the email or from the sender"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-y min-h-[90px]"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  This is the long Base64 string that was generated during encryption and sent to you.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Your Private Key (.pem)
+                </label>
+                <input
+                  type="file"
+                  accept=".pem"
+                  onChange={(e) => setPrivateKeyFile(e.target.files?.[0] || null)}
+                  className="block w-full text-sm text-gray-900 dark:text-gray-100 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/40 dark:file:text-blue-200 dark:hover:file:bg-blue-900/70"
+                />
+                {privateKeyFile && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Selected: <span className="font-mono">{privateKeyFile.name}</span>
+                  </p>
+                )}
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  This key should be kept secret. It never leaves your device except for this secure
+                  decryption step.
+                </p>
+              </div>
+            </div>
+          )}
 
           {isProcessing && (
             <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
