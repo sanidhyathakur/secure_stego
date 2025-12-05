@@ -7,12 +7,14 @@ export default function Encrypt() {
   const [secretImage, setSecretImage] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  const [receiverPublicKey, setReceiverPublicKey] = useState('');   // NEW
   const [coverPreview, setCoverPreview] = useState('');
   const [secretPreview, setSecretPreview] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [stegoImage, setStegoImage] = useState('');
+  const [encryptedKey, setEncryptedKey] = useState('');             // NEW
   const [error, setError] = useState('');
 
   const handleCoverImage = (file: File) => {
@@ -42,6 +44,7 @@ export default function Encrypt() {
     setIsProcessing(true);
     setError('');
     setStegoImage('');
+    setEncryptedKey('');           // reset
     setProgress(0);
     setStatus('Preparing images...');
 
@@ -50,6 +53,7 @@ export default function Encrypt() {
     formData.append('secretImage', secretImage);
     if (password) formData.append('password', password);
     if (email) formData.append('email', email);
+    if (receiverPublicKey) formData.append('receiverPubKey', receiverPublicKey); // NEW
 
     try {
       setProgress(30);
@@ -62,18 +66,27 @@ export default function Encrypt() {
 
       setProgress(70);
 
-      if (!response.ok) {
-        throw new Error('Encryption failed');
-      }
-
       const data = await response.json();
 
-      setProgress(100);
-      setStatus('Encryption complete!');
-      setStegoImage(data.stegoImageUrl || data.stegoImage);
+      if (!response.ok) {
+        // backend may send { error: "..."}
+        throw new Error(data.error || 'Encryption failed');
+      }
 
-      if (email) {
+      setStegoImage(data.stegoImageUrl || data.stegoImage || '');
+      if (data.encryptedKey) {
+        setEncryptedKey(data.encryptedKey);  // NEW
+      }
+
+      setProgress(100);
+
+      if (email && data.emailError) {
+        setStatus('Encryption complete, but email sending failed.');
+        setError(data.emailError);
+      } else if (email) {
         setStatus('Encryption complete! Email sent successfully.');
+      } else {
+        setStatus('Encryption complete!');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred during encryption');
@@ -145,7 +158,7 @@ export default function Encrypt() {
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                Recipient Email (Optional)
+                Recipient Email
               </label>
               <input
                 type="email"
@@ -154,6 +167,23 @@ export default function Encrypt() {
                 placeholder="recipient@example.com"
                 className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
               />
+            </div>
+
+            {/* NEW: Receiver Public Key */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Receiver Public Key (RSA, PEM) <span className="text-xs text-gray-500"></span>
+              </label>
+              <textarea
+                value={receiverPublicKey}
+                onChange={(e) => setReceiverPublicKey(e.target.value)}
+                placeholder={`-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...\n-----END PUBLIC KEY-----`}
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-y min-h-[100px]"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Ask the receiver to share their RSA public key and paste it here. If left empty, only
+                password-based mode is used.
+              </p>
             </div>
           </div>
 
@@ -183,6 +213,23 @@ export default function Encrypt() {
             <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
               <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
               <p className="text-sm text-green-700 dark:text-green-300">{status}</p>
+            </div>
+          )}
+
+          {/* NEW: show RSA-encrypted key if available */}
+          {encryptedKey && (
+            <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200 mb-2">
+                Encrypted decryption key (RSA, Base64)
+              </p>
+              <textarea
+                readOnly
+                className="w-full px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 text-xs text-emerald-900 dark:text-emerald-100 resize-y min-h-[80px]"
+                value={encryptedKey}
+              />
+              <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+                This key is encrypted with the receiver&apos;s public key. Only their private key can decrypt it.
+              </p>
             </div>
           )}
 
