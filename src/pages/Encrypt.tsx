@@ -1,20 +1,20 @@
 import { useState } from 'react';
 import FileUpload from '../components/FileUpload';
-import { Lock, Send, Download, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Lock, Send, Download, CheckCircle, AlertCircle, Loader, RotateCcw } from 'lucide-react';
 
 export default function Encrypt() {
   const [coverImage, setCoverImage] = useState<File | null>(null);
   const [secretImage, setSecretImage] = useState<File | null>(null);
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
-  const [receiverPublicKey, setReceiverPublicKey] = useState('');   // NEW
+  const [receiverPublicKey, setReceiverPublicKey] = useState('');
   const [coverPreview, setCoverPreview] = useState('');
   const [secretPreview, setSecretPreview] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [stegoImage, setStegoImage] = useState('');
-  const [encryptedKey, setEncryptedKey] = useState('');             // NEW
+  const [encryptedKey, setEncryptedKey] = useState('');
   const [error, setError] = useState('');
 
   const handleCoverImage = (file: File) => {
@@ -44,7 +44,7 @@ export default function Encrypt() {
     setIsProcessing(true);
     setError('');
     setStegoImage('');
-    setEncryptedKey('');           // reset
+    setEncryptedKey('');
     setProgress(0);
     setStatus('Preparing images...');
 
@@ -53,7 +53,7 @@ export default function Encrypt() {
     formData.append('secretImage', secretImage);
     if (password) formData.append('password', password);
     if (email) formData.append('email', email);
-    if (receiverPublicKey) formData.append('receiverPubKey', receiverPublicKey); // NEW
+    if (receiverPublicKey) formData.append('receiverPubKey', receiverPublicKey);
 
     try {
       setProgress(30);
@@ -69,13 +69,12 @@ export default function Encrypt() {
       const data = await response.json();
 
       if (!response.ok) {
-        // backend may send { error: "..."}
         throw new Error(data.error || 'Encryption failed');
       }
 
       setStegoImage(data.stegoImageUrl || data.stegoImage || '');
       if (data.encryptedKey) {
-        setEncryptedKey(data.encryptedKey);  // NEW
+        setEncryptedKey(data.encryptedKey);
       }
 
       setProgress(100);
@@ -103,6 +102,22 @@ export default function Encrypt() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleReset = () => {
+    setCoverImage(null);
+    setSecretImage(null);
+    setPassword('');
+    setEmail('');
+    setReceiverPublicKey('');
+    setCoverPreview('');
+    setSecretPreview('');
+    setIsProcessing(false);
+    setProgress(0);
+    setStatus('');
+    setStegoImage('');
+    setEncryptedKey('');
+    setError('');
   };
 
   return (
@@ -169,7 +184,6 @@ export default function Encrypt() {
               />
             </div>
 
-            {/* NEW: Receiver Public Key */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                 Receiver Public Key (RSA, PEM) <span className="text-xs text-gray-500"></span>
@@ -216,7 +230,6 @@ export default function Encrypt() {
             </div>
           )}
 
-          {/* NEW: show RSA-encrypted key if available */}
           {encryptedKey && (
             <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
               <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200 mb-2">
@@ -261,13 +274,22 @@ export default function Encrypt() {
                 alt="Stego result"
                 className="w-full rounded-xl border-2 border-gray-200 dark:border-gray-700"
               />
-              <button
-                onClick={handleDownload}
-                className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-lg"
-              >
-                <Download className="h-5 w-5" />
-                Download Stego Image
-              </button>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleDownload}
+                  className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <Download className="h-5 w-5" />
+                  Download Stego Image
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="w-full py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <RotateCcw className="h-5 w-5" />
+                  Reset
+                </button>
+              </div>
             </div>
           )}
         </div>
