@@ -158,3 +158,29 @@ def compute_psnr(image_bytes_a: bytes, image_bytes_b: bytes) -> float:
 
     psnr_value = cv2.PSNR(img_a, img_b)
     return float(psnr_value)
+
+
+def compute_histogram(image_bytes: bytes) -> dict:
+    """
+    Compute per-channel (R, G, B) histograms for an image.
+
+    Returns a dict with keys 'red', 'green', 'blue', each mapping to
+    a list of 256 integer counts. Used for cover-vs-stego histogram
+    comparison to demonstrate embedding imperceptibility.
+    """
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if img is None:
+        raise ValueError("Could not decode image for histogram computation.")
+
+    # OpenCV loads as BGR — compute histograms per channel
+    hist_b = cv2.calcHist([img], [0], None, [256], [0, 256]).flatten()
+    hist_g = cv2.calcHist([img], [1], None, [256], [0, 256]).flatten()
+    hist_r = cv2.calcHist([img], [2], None, [256], [0, 256]).flatten()
+
+    return {
+        "red": hist_r.astype(int).tolist(),
+        "green": hist_g.astype(int).tolist(),
+        "blue": hist_b.astype(int).tolist(),
+    }

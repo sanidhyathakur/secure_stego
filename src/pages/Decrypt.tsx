@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import FileUpload from '../components/FileUpload';
-import { Unlock, Sparkles, CheckCircle, AlertCircle, Loader, ArrowRight, Download, BarChart3, Zap } from 'lucide-react';
+import { Unlock, Sparkles, CheckCircle, AlertCircle, Loader, ArrowRight, Download, BarChart3, Zap, Settings } from 'lucide-react';
 
 type DecryptMode = 'password' | 'rsa';
 
@@ -29,6 +29,9 @@ export default function Decrypt() {
   const [psnrRaw, setPsnrRaw] = useState<number | null>(null);
   const [psnrEnhanced, setPsnrEnhanced] = useState<number | null>(null);
   const [isComputingPsnr, setIsComputingPsnr] = useState(false);
+
+  // Bit depth must match what was used during embedding
+  const [bitDepth, setBitDepth] = useState(2);
 
   const handleStegoImage = (file: File) => {
     setStegoImage(file);
@@ -66,6 +69,7 @@ export default function Decrypt() {
       formData.append('encryptedKey', encryptedKey.trim());
       endpoint = '/api/recover-rsa';
     }
+    formData.append('bitDepth', bitDepth.toString());
 
     try {
       await new Promise((r) => setTimeout(r, 600));
@@ -174,6 +178,7 @@ export default function Decrypt() {
     setOriginalSecretFile(null);
     setPsnrRaw(null);
     setPsnrEnhanced(null);
+    setBitDepth(2);
   };
 
   return (
@@ -213,6 +218,29 @@ export default function Decrypt() {
 
           <div className="mb-6">
             <FileUpload label="Stego Image" onFileSelect={handleStegoImage} preview={stegoPreview} onClear={resetAll} />
+          </div>
+
+          {/* Bit Depth selector — must match the value used during embedding */}
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+              <Settings className="h-4 w-4" />
+              Embedding Bit Depth
+            </label>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4].map((d) => (
+                <button key={d} type="button" onClick={() => setBitDepth(d)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
+                    bitDepth === d
+                      ? 'bg-green-600 text-white border-green-600 shadow'
+                      : 'bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700'
+                  }`}>
+                  {d} bit{d > 1 ? 's' : ''}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Must match the bit depth used during encryption. Default is 2.
+            </p>
           </div>
 
           {/* Mode-specific inputs */}

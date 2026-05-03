@@ -14,7 +14,7 @@ from email.mime.image import MIMEImage
 from dotenv import load_dotenv
 
 # CLAHE enhancement — post-extraction only (see module docstring for rationale)
-from clahe_enhance import apply_clahe, compute_psnr
+from clahe_enhance import apply_clahe, compute_psnr, compute_histogram
 
 # RSA / cryptography imports
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -116,7 +116,16 @@ def decrypt_key_with_private_key(ciphertext_b64: str, private_key_pem: str) -> s
 # -----------------------------
 # Steganography utilities
 # -----------------------------
-def embed_secret_image(cover_path: str, secret_path: str, password: str, output_path: str) -> str:
+def embed_secret_image(cover_path: str, secret_path: str, password: str, output_path: str, bit_depth: int = 2) -> str:
+    """
+    Embed secret image into cover image using LSB steganography.
+
+    bit_depth: Number of LSBs used per channel (1-4). Higher = better recovery
+    quality but more visible changes to the cover image. Default 2.
+    """
+    if bit_depth < 1 or bit_depth > 4:
+        raise ValueError("bit_depth must be between 1 and 4")
+
     cover_img = Image.open(cover_path).convert("RGB")
     secret_img = Image.open(secret_path).convert("RGB")
 
@@ -126,14 +135,22 @@ def embed_secret_image(cover_path: str, secret_path: str, password: str, output_
     secret_pixels = secret_img.load()
     width, height = cover_img.size
 
+    # Bit manipulation masks derived from bit_depth:
+    #   cover_mask  — clears the bottom N bits of each cover channel
+    #   shift       — how far right to shift secret values to extract top N bits
+    #   embed_mask  — isolates the N embedded bits after shifting
+    cover_mask = ~((1 << bit_depth) - 1) & 0xFF
+    shift = 8 - bit_depth
+    embed_mask = (1 << bit_depth) - 1
+
     for i in range(width):
         for j in range(height):
             r, g, b = cover_pixels[i, j]
             sr, sg, sb = secret_pixels[i, j]
 
-            b = (b & 0xFC) | ((sr >> 6) & 0x03)
-            r = (r & 0xFC) | ((sg >> 6) & 0x03)
-            g = (g & 0xFC) | ((sb >> 6) & 0x03)
+            b = (b & cover_mask) | ((sr >> shift) & embed_mask)
+            r = (r & cover_mask) | ((sg >> shift) & embed_mask)
+            g = (g & cover_mask) | ((sb >> shift) & embed_mask)
 
             cover_pixels[i, j] = (r, g, b)
 
@@ -148,7 +165,16 @@ def embed_secret_image(cover_path: str, secret_path: str, password: str, output_
     return output_path
 
 
-def extract_secret_image(stego_path: str, password: str, output_path: str) -> str:
+def extract_secret_image(stego_path: str, password: str, output_path: str, bit_depth: int = 2) -> str:
+    """
+    Extract hidden secret image from a stego image.
+
+    bit_depth MUST match the value used during embedding, otherwise
+    the extracted image will be incorrect.
+    """
+    if bit_depth < 1 or bit_depth > 4:
+        raise ValueError("bit_depth must be between 1 and 4")
+
     if password:
         password_length = len(password)
         with open(stego_path, "rb") as f:
@@ -170,12 +196,15 @@ def extract_secret_image(stego_path: str, password: str, output_path: str) -> st
     secret_img = Image.new("RGB", stegano_img.size)
     secret_pixels = secret_img.load()
 
+    extract_mask = (1 << bit_depth) - 1
+    shift = 8 - bit_depth
+
     for i in range(width):
         for j in range(height):
             r, g, b = stegano_img.getpixel((i, j))
-            sr = (b & 0x03) << 6
-            sg = (r & 0x03) << 6
-            sb = (g & 0x03) << 6
+            sr = (b & extract_mask) << shift
+            sg = (r & extract_mask) << shift
+            sb = (g & extract_mask) << shift
             secret_pixels[i, j] = (sr, sg, sb)
 
     secret_img.save(output_path, format="PNG")
@@ -254,6 +283,7 @@ def api_embed():
     password = request.form.get("password", "").strip()
     to_email = request.form.get("email", "").strip()
     receiver_pub_key = request.form.get("receiverPubKey", "").strip()
+    bit_depth = int(request.form.get("bitDepth", 2))
 
     if not cover_file.filename or not secret_file.filename:
         return jsonify({"error": "Empty filename(s)"}), 400
@@ -275,7 +305,7 @@ def api_embed():
     stego_path = os.path.join(OUTPUT_FOLDER, stego_filename)
 
     try:
-        embed_secret_image(cover_path, secret_path, password, stego_path)
+        embed_secret_image(cover_path, secret_path, password, stego_path, bit_depth=bit_depth)
     except Exception as e:
         print("EMBED ERROR:", e)
         return jsonify({"error": f"Embedding failed: {e}"}), 500
@@ -336,6 +366,7 @@ def api_recover():
 
     stego_file = request.files["stegoImage"]
     password = request.form.get("password", "")
+    bit_depth = int(request.form.get("bitDepth", 2))
 
     if not stego_file.filename:
         return jsonify({"error": "Empty filename"}), 400
@@ -348,7 +379,7 @@ def api_recover():
     recovered_path = os.path.join(OUTPUT_FOLDER, recovered_filename)
 
     try:
-        extract_secret_image(stego_path, password, recovered_path)
+        extract_secret_image(stego_path, password, recovered_path, bit_depth=bit_depth)
     except ValueError as ve:
         return jsonify({"error": str(ve)}), 401
     except Exception as e:
@@ -390,6 +421,8 @@ def api_recover_rsa():
 
     private_pem = priv_file.read().decode("utf-8")
 
+    bit_depth = int(request.form.get("bitDepth", 2))
+
     try:
         password = decrypt_key_with_private_key(encrypted_key_b64, private_pem)
     except Exception as e:
@@ -400,7 +433,7 @@ def api_recover_rsa():
     recovered_path = os.path.join(OUTPUT_FOLDER, recovered_filename)
 
     try:
-        extract_secret_image(stego_path, password, recovered_path)
+        extract_secret_image(stego_path, password, recovered_path, bit_depth=bit_depth)
     except Exception as e:
         return jsonify({"error": f"Recovery failed: {e}"}), 500
 
@@ -416,6 +449,31 @@ def get_recovered(filename):
     if not os.path.exists(file_path):
         return jsonify({"error": "File not found"}), 404
     return send_file(file_path, mimetype="image/png")
+
+
+# ---------------------------------------------------------------
+# Histogram endpoint — for cover vs stego visual comparison
+# ---------------------------------------------------------------
+
+@app.route("/api/histogram", methods=["POST"])
+def api_histogram():
+    """Compute RGB histogram for an uploaded image. Returns 256 bins per channel."""
+    if "image" not in request.files:
+        return jsonify({"error": "image file is required"}), 400
+
+    img_file = request.files["image"]
+    image_bytes = img_file.read()
+    if not image_bytes:
+        return jsonify({"error": "Empty file"}), 400
+
+    try:
+        hist = compute_histogram(image_bytes)
+        return jsonify({"histogram": hist}), 200
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        logging.error(f"Histogram computation failed: {e}")
+        return jsonify({"error": "Failed to compute histogram"}), 500
 
 
 # ---------------------------------------------------------------
