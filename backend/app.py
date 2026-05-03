@@ -1,4 +1,6 @@
 import os
+import io
+import logging
 import base64
 import secrets
 from flask import Flask, request, jsonify, send_file
@@ -10,6 +12,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from dotenv import load_dotenv
+
+# CLAHE enhancement — post-extraction only (see module docstring for rationale)
+from clahe_enhance import apply_clahe, compute_psnr
 
 # RSA / cryptography imports
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
@@ -132,7 +137,9 @@ def embed_secret_image(cover_path: str, secret_path: str, password: str, output_
 
             cover_pixels[i, j] = (r, g, b)
 
-    cover_img.save(output_path, format="JPEG")
+    # MUST be PNG (lossless). JPEG compression destroys LSB pixel data,
+    # making the embedded secret unrecoverable (output becomes pure noise).
+    cover_img.save(output_path, format="PNG")
 
     if password:
         with open(output_path, "ab") as f:
@@ -264,7 +271,7 @@ def api_embed():
     cover_file.save(cover_path)
     secret_file.save(secret_path)
 
-    stego_filename = f"stego_{os.path.splitext(cover_filename)[0]}.jpg"
+    stego_filename = f"stego_{os.path.splitext(cover_filename)[0]}.png"
     stego_path = os.path.join(OUTPUT_FOLDER, stego_filename)
 
     try:
@@ -313,7 +320,7 @@ def get_stego(filename):
     file_path = os.path.join(OUTPUT_FOLDER, secure_filename(filename))
     if not os.path.exists(file_path):
         return jsonify({"error": "File not found"}), 404
-    return send_file(file_path, mimetype="image/jpeg")
+    return send_file(file_path, mimetype="image/png")
 
 
 @app.route("/api/recover", methods=["POST"])
@@ -411,6 +418,133 @@ def get_recovered(filename):
     return send_file(file_path, mimetype="image/png")
 
 
+# ---------------------------------------------------------------
+# CLAHE Enhancement endpoint
+# This must ONLY be used on images that have already been
+# extracted from the stego container. Applying enhancement
+# to a stego image before extraction would corrupt the LSB
+# payload and destroy the hidden data.
+# ---------------------------------------------------------------
+
+ALLOWED_ENHANCE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+
+
+@app.route("/api/enhance", methods=["POST"])
+def api_enhance():
+    """
+    CLAHE-based image enhancement for recovered steganographic images.
+
+    POST form-data:
+      - image  (file, required): The recovered image to enhance (PNG or JPEG)
+      - clipLimit     (float, optional): CLAHE clip limit, default 2.0
+      - tileGridSize  (int, optional):   Grid tile size (square), default 8
+    """
+    if "image" not in request.files:
+        return jsonify({"error": "No image file provided. Please upload an image."}), 400
+
+    img_file = request.files["image"]
+
+    if not img_file.filename:
+        return jsonify({"error": "Empty filename. Please select a valid image file."}), 400
+
+    # Validate file extension
+    ext = os.path.splitext(img_file.filename)[1].lower()
+    if ext not in ALLOWED_ENHANCE_EXTENSIONS:
+        return jsonify({
+            "error": f"Unsupported format '{ext}'. Please upload a PNG or JPEG image."
+        }), 400
+
+    # Read image bytes
+    image_bytes = img_file.read()
+    if not image_bytes:
+        return jsonify({"error": "Uploaded file is empty. Please upload a valid image."}), 400
+
+    # Parse optional CLAHE parameters
+    clip_limit = request.form.get("clipLimit", 2.0)
+    tile_size = request.form.get("tileGridSize", 8)
+
+    try:
+        clip_limit = float(clip_limit)
+        tile_size = int(tile_size)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid CLAHE parameters. clipLimit must be a number, tileGridSize must be an integer."}), 400
+
+    try:
+        enhanced_bytes = apply_clahe(
+            image_bytes,
+            clip_limit=clip_limit,
+            tile_grid_size=(tile_size, tile_size),
+        )
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except RuntimeError as re:
+        logging.error(f"CLAHE enhancement failed: {re}")
+        return jsonify({"error": "Enhancement processing failed. The image may be corrupted."}), 500
+    except Exception as e:
+        logging.error(f"Unexpected error in /api/enhance: {e}", exc_info=True)
+        return jsonify({"error": "An unexpected error occurred during enhancement."}), 500
+
+    # Save enhanced image and return URL
+    safe_name = secure_filename(img_file.filename)
+    enhanced_filename = f"enhanced_{os.path.splitext(safe_name)[0]}.png"
+    enhanced_path = os.path.join(OUTPUT_FOLDER, enhanced_filename)
+
+    with open(enhanced_path, "wb") as f:
+        f.write(enhanced_bytes)
+
+    return jsonify({
+        "message": "CLAHE enhancement applied successfully",
+        "enhancedImageUrl": f"/api/enhanced/{enhanced_filename}",
+    }), 200
+
+
+@app.route("/api/enhanced/<filename>", methods=["GET"])
+def get_enhanced_image(filename):
+    """Serve an enhanced image from the outputs folder."""
+    file_path = os.path.join(OUTPUT_FOLDER, secure_filename(filename))
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found"}), 404
+    return send_file(file_path, mimetype="image/png")
+
+
+@app.route("/api/psnr", methods=["POST"])
+def api_psnr():
+    """
+    Compute PSNR between an original image and a recovered/enhanced image.
+
+    POST form-data:
+      - original  (file): The original secret image
+      - compared  (file): The recovered or enhanced image to compare against
+    """
+    if "original" not in request.files or "compared" not in request.files:
+        return jsonify({"error": "Both 'original' and 'compared' image files are required."}), 400
+
+    orig_file = request.files["original"]
+    comp_file = request.files["compared"]
+
+    if not orig_file.filename or not comp_file.filename:
+        return jsonify({"error": "Empty filename(s). Please select valid image files."}), 400
+
+    orig_bytes = orig_file.read()
+    comp_bytes = comp_file.read()
+
+    if not orig_bytes or not comp_bytes:
+        return jsonify({"error": "One or both uploaded files are empty."}), 400
+
+    try:
+        psnr_value = compute_psnr(orig_bytes, comp_bytes)
+        return jsonify({
+            "psnr": round(psnr_value, 4),
+            "unit": "dB",
+        }), 200
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        logging.error(f"PSNR computation failed: {e}", exc_info=True)
+        return jsonify({"error": "Failed to compute PSNR."}), 500
+
+
+# Legacy AI-recover endpoint — now uses CLAHE instead of placeholder
 @app.route("/api/ai-recover", methods=["POST"])
 def api_ai_recover():
     if "image" not in request.files:
@@ -420,18 +554,26 @@ def api_ai_recover():
     if not img_file.filename:
         return jsonify({"error": "Empty filename"}), 400
 
-    filename = secure_filename(img_file.filename)
-    input_path = os.path.join(UPLOAD_FOLDER, filename)
-    output_path = os.path.join(OUTPUT_FOLDER, f"ai_{filename}")
+    image_bytes = img_file.read()
+    if not image_bytes:
+        return jsonify({"error": "Empty file"}), 400
 
-    img_file.save(input_path)
+    try:
+        enhanced_bytes = apply_clahe(image_bytes)
+    except Exception as e:
+        logging.error(f"AI recover (CLAHE) failed: {e}")
+        return jsonify({"error": f"Enhancement failed: {e}"}), 500
 
-    img = Image.open(input_path)
-    img.save(output_path)
+    safe_name = secure_filename(img_file.filename)
+    output_filename = f"ai_{os.path.splitext(safe_name)[0]}.png"
+    output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+
+    with open(output_path, "wb") as f:
+        f.write(enhanced_bytes)
 
     return jsonify({
-        "message": "AI recovery placeholder executed",
-        "enhancedImageUrl": f"/api/ai-image/{os.path.basename(output_path)}"
+        "message": "CLAHE-based enhancement applied",
+        "enhancedImageUrl": f"/api/ai-image/{output_filename}",
     }), 200
 
 

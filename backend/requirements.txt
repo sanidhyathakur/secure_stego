@@ -3,3 +3,4 @@ flask-cors
 pillow
 python-dotenv
 cryptography
+opencv-python-headless
