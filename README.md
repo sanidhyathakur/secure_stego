@@ -270,7 +270,9 @@ assets/demo.gif
 # 👨‍💻 Contributors
 
 - Arindam
-- Team Members
+- Vanshaj Sharma
+- Ayush Thakur
+- Sanidhya Thakur
 
 ---
 
