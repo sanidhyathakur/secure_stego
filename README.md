@@ -1,190 +1,192 @@
- Secure Image Steganography System
-Stego Encryption + RSA Secure Key Exchange + SMTP Delivery
+<div align="center">
 
-This project is a secure image steganography system that hides a secret image inside a cover image, protects the decryption key using RSA public-key encryption, and delivers the stego image by email. The receiver can decrypt the hidden image using either a password or their private key for improved security.
+# 🔐 Secure Image Steganography System
+### RSA Secure Key Exchange + SMTP Delivery + CLAHE Enhanced Recovery
 
-Features
-1. Secure Image Embedding
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python">
+  <img src="https://img.shields.io/badge/Flask-Backend-black?style=for-the-badge&logo=flask">
+  <img src="https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react">
+  <img src="https://img.shields.io/badge/TailwindCSS-UI-38BDF8?style=for-the-badge&logo=tailwindcss">
+  <img src="https://img.shields.io/badge/RSA-OAEP-green?style=for-the-badge">
+  <img src="https://img.shields.io/badge/SMTP-Email-orange?style=for-the-badge">
+</p>
 
-Embed a secret image inside a cover image using LSB (Least Significant Bit) steganography.
+<p align="center">
+  A secure image steganography platform that combines hidden image embedding,
+  RSA-based key protection, SMTP delivery, and CLAHE image enhancement
+  into one complete workflow.
+</p>
 
-Supports:
+</div>
 
-.Password-based encryption, or
-.RSA public-key encrypted key exchange (recommended)
+---
 
-2. RSA Secure Key Exchange
+# 📌 Overview
 
+This project focuses on secure hidden communication using image steganography.  
+A secret image is embedded inside a cover image using the LSB (Least Significant Bit) technique while maintaining minimal visible distortion.
 
-.Sender pastes the receiver’s public key
-.Backend encrypts the stego password using RSA-OAEP
-.Encrypted key is shown in the UI and can be emailed
-.Receiver decrypts using their private key
+To strengthen security, the decryption key can be protected using RSA public-key encryption. The generated stego image can also be transmitted through Gmail SMTP. After extraction, CLAHE-based enhancement is used to improve the visual quality of distorted recovered images.
 
-Benefit:
-The decryption key never travels in plain text, providing strong confidentiality.
+---
 
-3. SMTP Email Delivery
+# ✨ Core Features
 
-The system can send:
+| Feature | Description |
+|---|---|
+| 🔒 LSB Steganography | Hides a secret image inside a cover image |
+| 🔑 RSA-OAEP Encryption | Secures the decryption key |
+| 📧 SMTP Delivery | Sends stego image through email |
+| 🖼️ CLAHE Enhancement | Improves extracted image quality |
+| 🔄 Dual Recovery Modes | Password mode + RSA secure mode |
+| 🌐 Modern Web UI | Responsive React + Tailwind interface |
+| 📊 Quality Evaluation | PSNR and visual comparison support |
 
-.Stego image (as attachment)
-.RSA-encrypted decryption key
-.via Gmail SMTP using App Password authentication.
+---
 
-4. Dual Decryption Modes
+# 🧠 System Workflow
 
-.Two fully supported recovery paths:
-.Password Mode
-.Simple and fast
-.Receiver manually enters the password
-.RSA Secure Mode
-.Receiver uploads their private key (.pem)
-.Pastes the RSA-encrypted key
-.System decrypts securely
-
-5. Modern User Interface
-
-.Developed using React and TailwindCSS:
-.Drag-and-drop file uploads
-.Real-time image previews
-.Encryption progress bar
-.Status messages
-.Clean, responsive design
-
-📦 Tech Stack
-Frontend
-.React
-.TypeScript
-.TailwindCSS
-.Lucide Icons
-.Vite
-
-Backend
-
-.Python
-.Flask
-.Pillow (image handling)
-
-Cryptography
-.RSA encryption/decryption
-.SMTP (email sending)
-
-How It Works (Step-by-Step)
-1. Start the Backend
-
+```mermaid
+flowchart TD
+    A[Upload Cover Image] --> B[Upload Secret Image]
+    B --> C[Choose Password or RSA Mode]
+    C --> D[LSB Embedding]
+    D --> E[RSA-OAEP Key Protection]
+    E --> F[Generate Stego Image]
+    F --> G[Send via SMTP]
+    G --> H[Receiver Uploads Stego Image]
+    H --> I[Decrypt using Password / RSA]
+    I --> J[Extract Hidden Image]
+    J --> K[CLAHE Enhancement]
+    K --> L[Final Recovered Output]
+🏗️ Tech Stack
+Layer	Technology	Purpose
+Frontend	React + TypeScript	User Interface
+Styling	Tailwind CSS	Responsive Design
+Backend	Flask	API and Processing
+Image Processing	Pillow + OpenCV	Embedding and Enhancement
+Cryptography	RSA-OAEP	Secure Key Exchange
+Communication	SMTP	Email Transmission
+Build Tool	Vite	Frontend Development
+📂 Project Structure
+secure_stego/
+│
+├── backend/
+│   ├── app.py
+│   ├── routes/
+│   ├── encryption/
+│   └── enhancement/
+│
+├── src/
+│   ├── pages/
+│   ├── components/
+│   └── utils/
+│
+├── research/
+├── Secret Images/
+├── Cover image folder/
+├── Results.ipynb
+├── PROJECT_REPORT.md
+└── README.md
+⚙️ Installation & Setup
+1️⃣ Clone Repository
+git clone https://github.com/sanidhyathakur/secure_stego.git
+cd secure_stego
+2️⃣ Backend Setup
 cd backend
+pip install -r requirements.txt
 python app.py
 
+Backend runs at:
 
-Runs the Flask server at http://localhost:5000
-
-2. Start the Frontend
+http://localhost:5000
+3️⃣ Frontend Setup
 npm install
 npm run dev
 
+Frontend runs at:
 
-Runs the React interface at http://localhost:5173
-
-3. Choose Cover & Secret Images
-
-On the Encrypt page:
-
-Upload Cover Image (host)
-
-Upload Secret Image (hidden image)
-
-System shows previews instantly.
-
-4. Select Encryption Mode
-Option A – Password Mode
-
-User enters a password (or backend auto-generates it)
-
-Password is used to encrypt the hidden image
-
-Option B – RSA Mode (Recommended)
-
-Receiver shares their public key
-
-Sender pastes it into the Encrypt page
-
-Backend encrypts the stego password using RSA-OAEP
-
-Result: only the receiver with the private key can decrypt.
-
-5. Encrypt & Send
-
-Click Encrypt & Send via Email (or just Encrypt & Embed).
-
-Backend will:
-
-Embed the secret image into the cover
-
-Protect the decryption key
-
-Password mode: plain password
-
-RSA mode: encrypted password
-
-Send stego image + encrypted key by email
-
-Return preview + download link
-
-6. Receiver Decrypts the Image
+http://localhost:5173
+🔐 Encryption Modes
 Password Mode
+Simple and fast
+User enters password manually
+Hidden image recovered using same password
+RSA Secure Mode
+Receiver shares public key
+Sender encrypts password using RSA-OAEP
+Receiver decrypts using private key
+Prevents key exposure during transmission
+📧 SMTP Delivery
 
-Receiver:
+The system supports Gmail SMTP integration using App Password authentication.
 
-Uploads the stego image
+The following can be sent securely:
 
-Enters the password
+Stego image
+RSA encrypted key
+Recovery details
+🖼️ CLAHE Enhanced Recovery
 
-Clicks Recover Hidden Image
+After extraction, recovered images may appear distorted due to:
 
-RSA Mode
+Compression
+Noise
+Resizing
+Transmission effects
 
-Receiver:
+To improve visibility, the project integrates:
 
-Uploads stego image
+CLAHE (Contrast Limited Adaptive Histogram Equalization)
 
-Uploads private key (.pem)
+Benefits:
 
-Pastes RSA encrypted key
+Better contrast
+Reduced visual distortion
+Improved readability
+Clearer recovered outputs
+📊 Results & Evaluation
+Metric	Purpose	Observation
+PSNR	Measures image quality	High visual similarity
+Extraction Accuracy	Checks correct recovery	Successful extraction
+Visual Comparison	Cover vs Stego difference	Minimal distortion
+CLAHE Enhancement	Recovery improvement	Clearer extracted image
+🖼️ Screenshots
+🔹 Encryption Interface
+Add screenshot here
+assets/encryption-page.png
+🔹 RSA Secure Recovery
+Add screenshot here
+assets/rsa-recovery.png
+🔹 CLAHE Enhanced Output
+Add screenshot here
+assets/clahe-output.png
+📈 Suggested README Additions
 
-System decrypts → recovers hidden image
+You can make the repository even stronger by adding:
 
+Demo GIF
+Before/After enhancement comparison
+PSNR graph
+Histogram comparison
+Architecture diagram
+Flowchart image
+Deployment screenshots
+🚀 Future Improvements
+SSIM-based quality analysis
+Steganalysis resistance scoring
+Batch processing support
+Multiple secret file types
+Progressive Web App support
+End-to-end encryption
+Video steganography
+🎥 Demo
+Add demo video or GIF here
+assets/demo.gif
+👨‍💻 Contributors
+Arindam
+Team Members
+📜 License
 
-Future Scope
-1. CLAHE Image Enhancement Integration
-
-Add automatic or optional CLAHE (Contrast Limited Adaptive Histogram Equalization) to improve:
-
-Low contrast recovered images
-
-Edge clarity
-
-Readability of diagrams or text
-
-2. Deep Learning Based Enhancement
-
-Integrate:
-
-DnCNN
-
-ESRGAN
-
-Super-resolution models
-for higher quality recovery.
-
-3. QR-Code Based Key Exchange
-
-Store encrypted keys in QR format to simplify receiver workflow.
-
-4. Support for Video Steganography
-
-Extend LSB/RSA pipeline to video frames.
-
-5. Tamper Detection
-
-Add hashing or digital signatures to ensure image integrity.
+This project is developed for educational and research purposes.
